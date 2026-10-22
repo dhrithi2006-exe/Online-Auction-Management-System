@@ -1,0 +1,15 @@
+{
+  "name": "online-auction-management-system",
+  "version": "1.0.0",
+  "description": "College DBMS Project — Online Auction Management System with CockroachDB",
+  "scripts": {
+    "install:server": "cd server && npm install",
+    "install:client": "cd client && npm install",
+    "install:all": "npm run install:server && npm run install:client",
+    "start:server": "cd server && npm start",
+    "start:client": "cd client && npm run dev"
+  },
+  "keywords": ["cockroachdb", "express", "react", "auction", "dbms"],
+  "author": "",
+  "license": "ISC"
+}
