@@ -95,7 +95,9 @@ router.post('/', requireAuth, async (req, res) => {
       }
 
       // Check user is winner
-      if (auction.winneruserid !== req.user.userid && req.user.role !== 'Admin') {
+      const winnerId = Number(auction.winneruserid);
+      const currentUserId = Number(req.user?.userid);
+      if ((isNaN(winnerId) || isNaN(currentUserId) || winnerId !== currentUserId) && req.user?.role !== 'Admin') {
         throw new Error('Only the winning bidder can submit payment for this auction.');
       }
 

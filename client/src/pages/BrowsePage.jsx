@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import ImageWithFallback from '../components/ImageWithFallback';
+import { formatINR } from '../utils/formatINR';
 
 export default function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -169,7 +170,7 @@ export default function BrowsePage() {
 
             <div style={{ display: 'flex', gap: '8px' }}>
               <div style={{ flex: 1 }}>
-                <label className="form-label">Min $</label>
+                <label className="form-label">Min ₹</label>
                 <input
                   type="number"
                   placeholder="0"
@@ -179,7 +180,7 @@ export default function BrowsePage() {
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <label className="form-label">Max $</label>
+                <label className="form-label">Max ₹</label>
                 <input
                   type="number"
                   placeholder="Max"
@@ -277,7 +278,7 @@ export default function BrowsePage() {
                     <div className="price-label">
                       {auc.highest_bid ? 'Current Highest Bid' : 'Starting Price'}
                     </div>
-                    <div className="price-amount">${parseFloat(auc.current_price).toFixed(2)}</div>
+                    <div className="price-amount">{formatINR(auc.current_price)}</div>
                   </div>
 
                   <Link to={`/auctions/${auc.auctionid}`} className="btn btn-primary btn-sm">

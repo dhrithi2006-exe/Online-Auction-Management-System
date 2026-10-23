@@ -3,6 +3,10 @@ const router = express.Router();
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
+const formatINR = (n) =>
+  '₹' +
+  Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 /**
  * GET /api/auctions
  * Browse auctions with search, category, condition, status, price range, and sorting
@@ -216,6 +220,125 @@ router.get('/:id/bids', async (req, res) => {
   } catch (err) {
     console.error('Error fetching bids:', err.message);
     res.status(500).json({ error: 'Failed to retrieve bid history.' });
+  }
+});
+
+/**
+ * POST /api/auctions/:id/close
+ * Conclude an auction, determine the winning bidder based on reserve price,
+ * and update both auction and item statuses.
+ * Idempotent: If auction is already closed, returns current status.
+ * Authorization: Only Item Seller or Admin.
+ */
+router.post('/:id/close', requireAuth, async (req, res) => {
+  try {
+    const auctionId = Number(req.params.id);
+    if (isNaN(auctionId)) {
+      return res.status(400).json({ error: 'Invalid auction ID.' });
+    }
+
+    const result = await db.withTransaction(async (client) => {
+      // 1. Fetch auction and item with lock
+      const aucRes = await client.query(
+        `SELECT a.auctionid, a.itemid, a.auctionstatus, a.reserveprice, a.winneruserid, a.enddate,
+                i.sellerid, i.status AS item_status, i.title
+         FROM auction a
+         JOIN item i ON a.itemid = i.itemid
+         WHERE a.auctionid = $1
+         FOR UPDATE OF a, i`,
+        [auctionId]
+      );
+
+      if (aucRes.rows.length === 0) {
+        throw new Error('Auction not found.');
+      }
+
+      const auction = aucRes.rows[0];
+
+      // 2. Idempotency: If already closed, return current record
+      if (auction.auctionstatus === 'Closed') {
+        return {
+          message: 'Auction is already closed.',
+          auction,
+          isAlreadyClosed: true,
+        };
+      }
+
+      // 3. Authorization check: Seller or Admin
+      const sellerId = Number(auction.sellerid);
+      const currentUserId = Number(req.user?.userid);
+      const isSeller = !isNaN(sellerId) && !isNaN(currentUserId) && sellerId === currentUserId;
+      const isAdmin = req.user?.role === 'Admin';
+
+      if (!isSeller && !isAdmin) {
+        throw new Error('Unauthorized. Only the seller or an administrator can conclude this auction.');
+      }
+
+      // 4. Find highest valid bidder
+      const bidRes = await client.query(
+        `SELECT bidderid, bidamount, bidtime
+         FROM bid
+         WHERE auctionid = $1
+         ORDER BY bidamount DESC, bidtime ASC
+         LIMIT 1`,
+        [auctionId]
+      );
+
+      const hasBids = bidRes.rows.length > 0;
+      const highestBid = hasBids ? bidRes.rows[0] : null;
+      const reservePrice = auction.reserveprice !== null ? parseFloat(auction.reserveprice) : null;
+      const highestBidAmount = highestBid ? parseFloat(highestBid.bidamount) : 0;
+
+      // Reserve price satisfied if reserve is null or highest bid >= reserve
+      const reserveMet = reservePrice === null || highestBidAmount >= reservePrice;
+
+      let winnerUserId = null;
+      let nextItemStatus = 'Unsold';
+
+      if (hasBids && reserveMet) {
+        winnerUserId = Number(highestBid.bidderid);
+        nextItemStatus = 'Sold';
+      } else {
+        // No bids or reserve price not met
+        winnerUserId = null;
+        nextItemStatus = 'Unsold';
+      }
+
+      // 5. Update auction
+      const updateAucRes = await client.query(
+        `UPDATE auction
+         SET auctionstatus = 'Closed', winneruserid = $1
+         WHERE auctionid = $2
+         RETURNING *`,
+        [winnerUserId, auctionId]
+      );
+
+      // 6. Update item status consistently
+      const updateItemRes = await client.query(
+        `UPDATE item
+         SET status = $1
+         WHERE itemid = $2
+         RETURNING *`,
+        [nextItemStatus, auction.itemid]
+      );
+
+      return {
+        message: winnerUserId
+          ? `Auction successfully closed. Winning bidder is User #${winnerUserId} at ${formatINR(highestBidAmount)}.`
+          : hasBids && !reserveMet
+          ? `Auction closed without a winner. Highest bid (${formatINR(highestBidAmount)}) did not meet reserve price (${formatINR(reservePrice)}).`
+          : 'Auction closed without bids. Item marked as Unsold.',
+        auction: updateAucRes.rows[0],
+        item: updateItemRes.rows[0],
+        winnerUserId,
+        finalPrice: highestBid ? highestBidAmount : null,
+      };
+    });
+
+    res.json(result);
+  } catch (err) {
+    console.error('Error closing auction:', err.message);
+    res.status(400).json({ error: err.message || 'Failed to close auction.' });
   }
 });
 

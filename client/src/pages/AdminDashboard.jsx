@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { formatINR } from '../utils/formatINR';
 
 export default function AdminDashboard() {
   const { user, authFetch } = useAuth();
@@ -258,7 +259,7 @@ export default function AdminDashboard() {
                         <td><strong>{i.title}</strong></td>
                         <td>{i.seller_name} (#{i.sellerid})</td>
                         <td>{i.categoryname}</td>
-                        <td>${parseFloat(i.startingprice).toFixed(2)}</td>
+                        <td>{formatINR(i.startingprice)}</td>
                         <td>{i.itemcondition}</td>
                         <td>
                           <span className={`badge badge-${i.status.toLowerCase()}`}>{i.status}</span>
@@ -302,7 +303,7 @@ export default function AdminDashboard() {
                             {a.auctionstatus}
                           </span>
                         </td>
-                        <td style={{ fontWeight: 600 }}>${parseFloat(a.current_price).toFixed(2)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatINR(a.current_price)}</td>
                         <td>{a.total_bids}</td>
                         <td>{a.winneruserid ? `#${a.winneruserid}` : '—'}</td>
                       </tr>
@@ -341,7 +342,7 @@ export default function AdminDashboard() {
                         </td>
                         <td>#{p.auctionid} ({p.item_title})</td>
                         <td>{p.buyer_name}</td>
-                        <td style={{ fontWeight: 600 }}>${parseFloat(p.amount).toFixed(2)}</td>
+                        <td style={{ fontWeight: 600 }}>{formatINR(p.amount)}</td>
                         <td>{p.paymentmethod}</td>
                         <td>
                           <span className="badge badge-active">{p.paymentstatus}</span>

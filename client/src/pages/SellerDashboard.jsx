@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import ImageWithFallback from '../components/ImageWithFallback';
+import { formatINR } from '../utils/formatINR';
 
 export default function SellerDashboard() {
   const { user, authFetch } = useAuth();
@@ -146,6 +147,23 @@ export default function SellerDashboard() {
     }
   };
 
+  const handleCloseAuction = async (auctionId) => {
+    if (!window.confirm(`Are you sure you want to conclude Auction #${auctionId}? The highest qualifying bidder will be declared winner, or the item will be marked Unsold if the reserve price is not met.`)) {
+      return;
+    }
+    try {
+      const res = await authFetch(`/api/auctions/${auctionId}/close`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to close auction.');
+      setFeedback({ type: 'success', message: data.message });
+      loadSellerData();
+    } catch (err) {
+      setFeedback({ type: 'error', message: err.message });
+    }
+  };
+
   return (
     <div>
       {/* Seller Header */}
@@ -221,9 +239,9 @@ export default function SellerDashboard() {
                     </td>
                     <td>{it.categoryname}</td>
                     <td>{it.itemcondition}</td>
-                    <td>${parseFloat(it.startingprice).toFixed(2)}</td>
+                    <td>{formatINR(it.startingprice)}</td>
                     <td style={{ fontWeight: 600, color: 'var(--accent)' }}>
-                      ${parseFloat(it.current_price).toFixed(2)}
+                      {formatINR(it.current_price)}
                     </td>
                     <td>
                       <span className={`badge badge-${(it.auctionstatus || it.status).toLowerCase()}`}>
@@ -244,6 +262,15 @@ export default function SellerDashboard() {
                         >
                           Edit
                         </button>
+                        {it.auctionid && it.auctionstatus === 'Active' && (
+                          <button
+                            onClick={() => handleCloseAuction(it.auctionid)}
+                            className="btn btn-secondary btn-sm"
+                            style={{ color: 'var(--accent)', borderColor: 'var(--accent-border)' }}
+                          >
+                            Close
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -407,13 +434,13 @@ export default function SellerDashboard() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div className="form-group">
-                  <label className="form-label">Starting Price ($)</label>
+                  <label className="form-label">Starting Price (₹)</label>
                   <input
                     type="number"
                     step="0.01"
                     min="0"
                     required
-                    placeholder="25.00"
+                    placeholder="2500.00"
                     value={startingPrice}
                     onChange={(e) => setStartingPrice(e.target.value)}
                     className="form-input"
@@ -473,7 +500,7 @@ export default function SellerDashboard() {
                       />
                     </div>
                     <div style={{ gridColumn: 'span 2' }}>
-                      <label className="form-label">Reserve Price ($ Optional)</label>
+                      <label className="form-label">Reserve Price (₹ Optional)</label>
                       <input
                         type="number"
                         step="0.01"
@@ -579,7 +606,7 @@ export default function SellerDashboard() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div className="form-group">
-                  <label className="form-label">Starting Price ($)</label>
+                  <label className="form-label">Starting Price (₹)</label>
                   <input
                     type="number"
                     step="0.01"

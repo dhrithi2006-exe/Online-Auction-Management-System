@@ -238,7 +238,9 @@ router.put('/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Item not found.' });
     }
 
-    if (existing.rows[0].sellerid !== req.user.userid && req.user.role !== 'Admin') {
+    const ownerId = Number(existing.rows[0].sellerid);
+    const currentUserId = Number(req.user?.userid);
+    if ((isNaN(ownerId) || isNaN(currentUserId) || ownerId !== currentUserId) && req.user?.role !== 'Admin') {
       return res.status(403).json({ error: 'You do not have permission to edit this item.' });
     }
 

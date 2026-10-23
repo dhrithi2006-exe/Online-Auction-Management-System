@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import ImageWithFallback from '../components/ImageWithFallback';
+import { formatINR } from '../utils/formatINR';
 
 export default function AuctionDetailsPage() {
   const { id } = useParams();
@@ -38,7 +39,7 @@ export default function AuctionDetailsPage() {
           ? parseFloat(aucData.auction.highest_bid)
           : null;
         const startPrice = parseFloat(aucData.auction.startingprice);
-        const minSuggested = currentHighest !== null ? currentHighest + 5 : startPrice;
+        const minSuggested = currentHighest !== null ? currentHighest + 500 : startPrice;
         setBidAmount(minSuggested.toFixed(2));
       })
       .catch((err) => {
@@ -112,7 +113,7 @@ export default function AuctionDetailsPage() {
 
       setBidFeedback({
         type: 'success',
-        message: `Your bid of $${amountNum.toFixed(2)} was successfully recorded!`,
+        message: `Your bid of ${formatINR(amountNum)} was successfully recorded!`,
       });
 
       // Reload auction & bid data
@@ -121,6 +122,21 @@ export default function AuctionDetailsPage() {
       setBidFeedback({ type: 'error', message: err.message });
     } finally {
       setBidSubmitting(false);
+    }
+  };
+
+  const handleCloseAuction = async () => {
+    if (!window.confirm(`Are you sure you want to conclude Auction #${id}? The highest qualifying bidder will be declared winner, or the item will be marked Unsold if the reserve price is not met.`)) {
+      return;
+    }
+    try {
+      const res = await authFetch(`/api/auctions/${id}/close`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to close auction.');
+      setBidFeedback({ type: 'success', message: data.message });
+      loadData();
+    } catch (err) {
+      setBidFeedback({ type: 'error', message: err.message });
     }
   };
 
@@ -282,11 +298,11 @@ export default function AuctionDetailsPage() {
                   {highestBidVal ? 'Current Highest Bid' : 'Starting Price'}
                 </div>
                 <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--accent)' }}>
-                  ${(highestBidVal || startingPriceVal).toFixed(2)}
+                  {formatINR(highestBidVal || startingPriceVal)}
                 </div>
                 {highestBidVal && (
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                    Starting price was: ${startingPriceVal.toFixed(2)}
+                    Starting price was: {formatINR(startingPriceVal)}
                   </div>
                 )}
               </div>
@@ -348,11 +364,37 @@ export default function AuctionDetailsPage() {
 
             {!auction.isEligibleForBidding ? (
               <div style={{ fontSize: '0.88rem', color: 'var(--text-muted)', padding: '8px 0' }}>
-                This auction is no longer active or the end date ({auction.enddate}) has passed. Bidding is closed.
+                <p>This auction is no longer active or the end date ({auction.enddate}) has passed. Bidding is closed.</p>
+                {(isSeller || user?.role === 'Admin') && auction.auctionstatus === 'Active' && (
+                  <div style={{ marginTop: '12px' }}>
+                    <button onClick={handleCloseAuction} className="btn btn-primary btn-sm">
+                      Conclude Auction & Record Winner
+                    </button>
+                  </div>
+                )}
               </div>
             ) : isSeller ? (
-              <div style={{ fontSize: '0.88rem', color: 'var(--warning)', padding: '8px 0' }}>
-                You listed this item. Sellers cannot place bids on their own items.
+              <div style={{ fontSize: '0.88rem', color: 'var(--text-main)', padding: '8px 0' }}>
+                <p style={{ color: 'var(--warning)', marginBottom: '10px' }}>
+                  You listed this item. Sellers cannot place bids on their own items.
+                </p>
+                {auction.auctionstatus === 'Active' && (
+                  <div>
+                    <button
+                      onClick={handleCloseAuction}
+                      className="btn btn-secondary btn-sm"
+                      style={{ borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                    >
+                      End Auction Early & Record Winner
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (isSeller || user?.role === 'Admin') && auction.auctionstatus === 'Active' ? (
+              <div style={{ padding: '8px 0' }}>
+                <button onClick={handleCloseAuction} className="btn btn-secondary btn-sm" style={{ marginBottom: '16px' }}>
+                  Conclude Auction as Admin
+                </button>
               </div>
             ) : !user ? (
               <div>
@@ -367,7 +409,7 @@ export default function AuctionDetailsPage() {
               <form onSubmit={handlePlaceBid}>
                 <div style={{ marginBottom: '12px' }}>
                   <label className="form-label">
-                    Your Bid Amount (USD) — Minimum: ${minRequiredBid.toFixed(2)}
+                    Your Bid Amount (INR) — Minimum: {formatINR(minRequiredBid)}
                   </label>
                   <div style={{ display: 'flex', gap: '8px' }}>
                     <div style={{ position: 'relative', flex: 1 }}>
@@ -379,7 +421,7 @@ export default function AuctionDetailsPage() {
                           color: 'var(--text-muted)',
                         }}
                       >
-                        $
+                        ₹
                       </span>
                       <input
                         type="number"
@@ -437,7 +479,7 @@ export default function AuctionDetailsPage() {
 
         {bids.length === 0 ? (
           <div style={{ padding: '24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            No bids have been submitted yet. Be the first to bid at the starting price of ${startingPriceVal.toFixed(2)}!
+            No bids have been submitted yet. Be the first to bid at the starting price of {formatINR(startingPriceVal)}!
           </div>
         ) : (
           <div className="table-container">
@@ -471,7 +513,7 @@ export default function AuctionDetailsPage() {
                       )}
                     </td>
                     <td style={{ fontWeight: 600, color: idx === 0 ? 'var(--accent)' : 'inherit' }}>
-                      ${parseFloat(b.bidamount).toFixed(2)}
+                      {formatINR(b.bidamount)}
                     </td>
                     <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                       {new Date(b.bidtime).toLocaleString()}

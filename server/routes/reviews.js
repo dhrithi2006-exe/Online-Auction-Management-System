@@ -9,7 +9,7 @@ const { requireAuth } = require('../middleware/auth');
  */
 router.get('/', async (req, res) => {
   try {
-    const { auctionid, revieweeid } = req.query;
+    const { auctionid, revieweeid, reviewerid } = req.query;
     const conditions = [];
     const params = [];
 
@@ -21,6 +21,11 @@ router.get('/', async (req, res) => {
     if (revieweeid) {
       params.push(Number(revieweeid));
       conditions.push(`r.revieweeid = $${params.length}`);
+    }
+
+    if (reviewerid) {
+      params.push(Number(reviewerid));
+      conditions.push(`r.reviewerid = $${params.length}`);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

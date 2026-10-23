@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import ImageWithFallback from '../components/ImageWithFallback';
+import { formatINR } from '../utils/formatINR';
 
 export default function BuyerDashboard() {
   const { user, authFetch } = useAuth();
@@ -11,6 +12,7 @@ export default function BuyerDashboard() {
   const [watchlist, setWatchlist] = useState([]);
   const [payments, setPayments] = useState([]);
   const [shipments, setShipments] = useState([]);
+  const [myReviews, setMyReviews] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Simulated Payment Modal state
@@ -30,17 +32,20 @@ export default function BuyerDashboard() {
 
   const loadBuyerData = () => {
     setLoading(true);
+    const revUrl = user?.userid ? `/api/reviews?reviewerid=${user.userid}` : '/api/reviews';
     Promise.all([
       authFetch('/api/bids/my-bids').then((r) => r.json()),
       authFetch('/api/watchlist').then((r) => r.json()),
       authFetch('/api/payments').then((r) => r.json()),
       authFetch('/api/shipping').then((r) => r.json()),
+      authFetch(revUrl).then((r) => r.json()),
     ])
-      .then(([bidData, watchData, payData, shipData]) => {
+      .then(([bidData, watchData, payData, shipData, revData]) => {
         if (bidData.bids) setBids(bidData.bids);
         if (watchData.watchlist) setWatchlist(watchData.watchlist);
         if (payData.payments) setPayments(payData.payments);
         if (shipData.shipments) setShipments(shipData.shipments);
+        if (revData.reviews) setMyReviews(revData.reviews);
       })
       .catch((err) => console.error('Buyer data error:', err))
       .finally(() => setLoading(false));
@@ -97,10 +102,21 @@ export default function BuyerDashboard() {
       setReviewFeedback({ type: 'success', message: 'Review successfully recorded in database.' });
       setReviewModalAuction(null);
       setReviewComment('');
+      loadBuyerData();
     } catch (err) {
       setReviewFeedback({ type: 'error', message: err.message });
     } finally {
       setReviewLoading(false);
+    }
+  };
+
+  const handleRemoveFromWatchlist = async (itemId) => {
+    try {
+      const res = await authFetch(`/api/watchlist/${itemId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to remove from watchlist');
+      loadBuyerData();
+    } catch (err) {
+      console.error('Watchlist remove error:', err);
     }
   };
 
@@ -152,6 +168,7 @@ export default function BuyerDashboard() {
           { id: 'watchlist', label: `Watchlist (${watchlist.length})` },
           { id: 'payments', label: `Payment History (${payments.length})` },
           { id: 'shipping', label: `Shipping & Tracking (${shipments.length})` },
+          { id: 'reviews', label: `My Reviews (${myReviews.length})` },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -207,8 +224,8 @@ export default function BuyerDashboard() {
                           Auction #{b.auctionid} &bull; Ends {b.enddate}
                         </div>
                       </td>
-                      <td style={{ fontWeight: 600 }}>${parseFloat(b.bidamount).toFixed(2)}</td>
-                      <td>${parseFloat(b.highest_bid).toFixed(2)}</td>
+                      <td style={{ fontWeight: 600 }}>{formatINR(b.bidamount)}</td>
+                      <td>{formatINR(b.highest_bid)}</td>
                       <td>
                         {b.is_highest_bidder ? (
                           <span className="badge badge-active">Highest Bidder</span>
@@ -257,12 +274,13 @@ export default function BuyerDashboard() {
                 <tbody>
                   {uniqueWonAuctions.map((w) => {
                     const payRecord = payments.find((p) => Number(p.auctionid) === Number(w.auctionid));
+                    const existingReview = myReviews.find((r) => Number(r.auctionid) === Number(w.auctionid));
                     return (
                       <tr key={w.auctionid}>
                         <td style={{ fontFamily: 'monospace' }}>#{w.auctionid}</td>
                         <td><strong>{w.item_title}</strong></td>
                         <td style={{ fontWeight: 600, color: 'var(--accent)' }}>
-                          ${parseFloat(w.bidamount).toFixed(2)}
+                          {formatINR(w.bidamount)}
                         </td>
                         <td>
                           <span className="badge badge-closed">{w.auctionstatus}</span>
@@ -275,7 +293,7 @@ export default function BuyerDashboard() {
                           )}
                         </td>
                         <td>
-                          <div style={{ display: 'flex', gap: '6px' }}>
+                          <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                             <Link to={`/auctions/${w.auctionid}`} className="btn btn-secondary btn-sm">
                               View
                             </Link>
@@ -286,6 +304,25 @@ export default function BuyerDashboard() {
                               >
                                 Pay Now (Simulated)
                               </button>
+                            )}
+                            {payRecord && (
+                              existingReview ? (
+                                <span style={{ fontSize: '0.8rem', color: 'var(--accent)', fontWeight: 600 }}>
+                                  Reviewed ({'★'.repeat(Number(existingReview.rating))})
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setReviewModalAuction(w);
+                                    setReviewRating(5);
+                                    setReviewComment('');
+                                  }}
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ color: 'var(--accent)', borderColor: 'var(--accent-border)' }}
+                                >
+                                  Write Review
+                                </button>
+                              )
                             )}
                           </div>
                         </td>
@@ -332,15 +369,24 @@ export default function BuyerDashboard() {
                     <div className="auction-pricing">
                       <div>
                         <div className="price-label">Current Price</div>
-                        <div className="price-amount">${parseFloat(item.current_price).toFixed(2)}</div>
+                        <div className="price-amount">{formatINR(item.current_price)}</div>
                       </div>
-                      {item.auctionid ? (
-                        <Link to={`/auctions/${item.auctionid}`} className="btn btn-primary btn-sm">
-                          View
-                        </Link>
-                      ) : (
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Unlisted</span>
-                      )}
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {item.auctionid ? (
+                          <Link to={`/auctions/${item.auctionid}`} className="btn btn-primary btn-sm">
+                            View
+                          </Link>
+                        ) : (
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Unlisted</span>
+                        )}
+                        <button
+                          onClick={() => handleRemoveFromWatchlist(item.itemid)}
+                          className="btn btn-secondary btn-sm"
+                          title="Remove from Watchlist"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -378,7 +424,7 @@ export default function BuyerDashboard() {
                       <td style={{ fontFamily: 'monospace' }}>#{p.paymentid}</td>
                       <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{p.transactionreference}</td>
                       <td>{p.item_title}</td>
-                      <td style={{ fontWeight: 600 }}>${parseFloat(p.amount).toFixed(2)}</td>
+                      <td style={{ fontWeight: 600 }}>{formatINR(p.amount)}</td>
                       <td>{p.paymentmethod}</td>
                       <td>
                         <span className="badge badge-active">{p.paymentstatus}</span>
@@ -440,6 +486,52 @@ export default function BuyerDashboard() {
         </div>
       )}
 
+      {/* Tab 6: My Reviews */}
+      {activeTab === 'reviews' && (
+        <div className="card">
+          <h2 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '16px' }}>Reviews Written by You</h2>
+          {myReviews.length === 0 ? (
+            <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              You haven't written any reviews yet. Once you complete payment for a won auction, you can review the seller here.
+            </div>
+          ) : (
+            <div className="table-container">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Review ID</th>
+                    <th>Auction Item</th>
+                    <th>Seller Reviewed</th>
+                    <th>Rating</th>
+                    <th>Your Feedback</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {myReviews.map((r) => (
+                    <tr key={r.reviewid}>
+                      <td style={{ fontFamily: 'monospace' }}>#{r.reviewid}</td>
+                      <td>
+                        <strong>{r.item_title}</strong>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                          Auction #{r.auctionid}
+                        </div>
+                      </td>
+                      <td>{r.reviewee_name}</td>
+                      <td style={{ color: 'var(--accent)', fontWeight: 700 }}>
+                        {'★'.repeat(Number(r.rating))} ({r.rating}/5)
+                      </td>
+                      <td style={{ fontSize: '0.85rem' }}>{r.comment || 'No comment provided.'}</td>
+                      <td style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>{r.reviewdate}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Simulated Payment Modal */}
       {paymentModalAuction && (
         <div
@@ -474,7 +566,7 @@ export default function BuyerDashboard() {
                 <input
                   type="text"
                   disabled
-                  value={`$${parseFloat(paymentModalAuction.bidamount).toFixed(2)}`}
+                  value={formatINR(paymentModalAuction.bidamount)}
                   className="form-input"
                   style={{ fontWeight: 600, color: 'var(--accent)' }}
                 />
@@ -533,6 +625,77 @@ export default function BuyerDashboard() {
                   className="btn btn-primary btn-sm"
                 >
                   {payLoading ? 'Processing...' : 'Confirm Simulated Payment'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* Review Submission Modal */}
+      {reviewModalAuction && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '20px',
+          }}
+        >
+          <div className="card" style={{ maxWidth: '440px', width: '100%', backgroundColor: '#ffffff' }}>
+            <h3 style={{ fontSize: '1.2rem', marginBottom: '8px' }}>Review Seller</h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+              Leave feedback for <strong>{reviewModalAuction.seller_name || `Seller #${reviewModalAuction.sellerid}`}</strong> for item <em>{reviewModalAuction.item_title}</em>.
+            </p>
+
+            <form onSubmit={handleReviewSubmit}>
+              <div className="form-group">
+                <label className="form-label">Rating (1 to 5 Stars)</label>
+                <select
+                  value={reviewRating}
+                  onChange={(e) => setReviewRating(Number(e.target.value))}
+                  className="form-select"
+                >
+                  <option value={5}>★★★★★ (5 - Excellent)</option>
+                  <option value={4}>★★★★☆ (4 - Good)</option>
+                  <option value={3}>★★★☆☆ (3 - Average)</option>
+                  <option value={2}>★★☆☆☆ (2 - Below Average)</option>
+                  <option value={1}>★☆☆☆☆ (1 - Poor)</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Review Comment (Optional)</label>
+                <textarea
+                  rows="3"
+                  maxLength={500}
+                  placeholder="Share details of your experience with the item and communication..."
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  className="form-textarea"
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
+                <button
+                  type="button"
+                  onClick={() => setReviewModalAuction(null)}
+                  className="btn btn-secondary btn-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={reviewLoading}
+                  className="btn btn-primary btn-sm"
+                >
+                  {reviewLoading ? 'Submitting...' : 'Submit Review'}
                 </button>
               </div>
             </form>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import ImageWithFallback from '../components/ImageWithFallback';
+import { formatINR } from '../utils/formatINR';
 
 export default function HomePage() {
   const [categories, setCategories] = useState([]);
@@ -200,7 +201,7 @@ export default function HomePage() {
                       <div className="price-label">
                         {auc.highest_bid ? 'Current Highest Bid' : 'Starting Price'}
                       </div>
-                      <div className="price-amount">${parseFloat(auc.current_price).toFixed(2)}</div>
+                      <div className="price-amount">{formatINR(auc.current_price)}</div>
                     </div>
 
                     <Link to={`/auctions/${auc.auctionid}`} className="btn btn-primary btn-sm">

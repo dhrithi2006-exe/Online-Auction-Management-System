@@ -3,6 +3,10 @@ const router = express.Router();
 const db = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
+const formatINR = (n) =>
+  '₹' +
+  Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 /**
  * POST /api/auctions/:id/bids
  * Place a bid on an active auction with full server-side validation
@@ -72,11 +76,11 @@ router.post('/auctions/:id/bids', requireAuth, async (req, res) => {
 
       if (highestBid !== null) {
         if (bidAmount <= highestBid) {
-          throw new Error(`Your bid of $${bidAmount.toFixed(2)} must be strictly higher than the current highest bid of $${highestBid.toFixed(2)}.`);
+          throw new Error(`Your bid of ${formatINR(bidAmount)} must be strictly higher than the current highest bid of ${formatINR(highestBid)}.`);
         }
       } else {
         if (bidAmount < startingPrice) {
-          throw new Error(`First bid must be at least the starting price of $${startingPrice.toFixed(2)}.`);
+          throw new Error(`First bid must be at least the starting price of ${formatINR(startingPrice)}.`);
         }
       }
 
@@ -122,11 +126,14 @@ router.get('/my-bids', requireAuth, async (req, res) => {
         i.itemid,
         i.title AS item_title,
         i.imageurl,
+        i.sellerid,
+        seller.name AS seller_name,
         high.highest_bid,
         (high.highest_bid = b.bidamount) AS is_highest_bidder
        FROM bid b
        JOIN auction a ON b.auctionid = a.auctionid
        JOIN item i ON a.itemid = i.itemid
+       JOIN app_user seller ON i.sellerid = seller.userid
        JOIN (
          SELECT auctionid, MAX(bidamount) AS highest_bid
          FROM bid
